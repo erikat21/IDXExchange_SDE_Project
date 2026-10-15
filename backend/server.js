@@ -9,6 +9,20 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+    const start = Date.now();
+    const timestamp = new Date().toISOString();
+
+    // Listen for when the response finishes sending
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        // FIXED: Added spacing and hyphen before Status:
+        console.log(`[${timestamp}] ${req.method} ${req.originalUrl} - Status: ${res.statusCode} (${duration}ms)`);
+    });
+
+    next();
+});
+
 // Health Check Endpoint
 app.get('/api/health', async (req, res) => {
   try {
@@ -35,7 +49,7 @@ app.get('/api/properties', async (req, res) => {
     const beds = req.query.beds != null ? Number(req.query.beds) : null;
     const baths = req.query.baths != null ? Number(req.query.baths) : null;
 
-    // 1. Validate Pagination
+    // Validate Pagination
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         return res.status(400).json({ error: 'limit must be an integer between 1 and 100.' });
     }
@@ -43,7 +57,7 @@ app.get('/api/properties', async (req, res) => {
         return res.status(400).json({ error: 'offset must be a nonnegative integer.' });
     }
 
-    // 2. Validate Prices
+    // Validate Prices
     if (minPrice !== null && (!Number.isFinite(minPrice) || minPrice < 0)) {
         return res.status(400).json({ error: 'minPrice must be a nonnegative number.' });
     }
@@ -54,7 +68,7 @@ app.get('/api/properties', async (req, res) => {
         return res.status(400).json({ error: 'minPrice cannot exceed maxPrice.' });
     }
 
-    // 3. Validate Beds and Baths
+    // Validate Beds and Baths
     if (beds !== null && (!Number.isInteger(beds) || beds < 0)) {
         return res.status(400).json({ error: 'beds must be a nonnegative integer.' });
     }
@@ -63,7 +77,7 @@ app.get('/api/properties', async (req, res) => {
     }
 
     try {
-        // 4. Database Validation for City Existence
+        // Database Validation for City Existence
         if (city !== null && city !== '') {
             const [existsResult] = await db.query(
                 'SELECT EXISTS(SELECT 1 FROM rets_property WHERE L_City = ?) AS cityExists', 
@@ -74,7 +88,7 @@ app.get('/api/properties', async (req, res) => {
             }
         }
 
-        // 5. Database Validation for Zipcode Format & Existence
+        // Database Validation for Zipcode Format & Existence
         if (zipcode !== null && zipcode !== '') {
             if (!/^\d{5}$/.test(zipcode)) {
                 return res.status(400).json({ error: 'not a valid zipcode. should be 5 digits.' });
@@ -136,6 +150,67 @@ app.get('/api/properties', async (req, res) => {
     } catch (dbError) {
         console.error("Execution Error:", dbError.message);
         return res.status(500).json({ error: "Internal server database error." });
+    }
+});
+
+// GET /api/properties/:id/openhouses - Returns open house events array for a specific property
+app.get('/api/properties/:id/openhouses', async (req, res) => {
+    const identifier = req.params.id;
+
+    if (!/^\d+$/.test(identifier)) {
+        return res.status(400).json({ error: 'Invalid ID format. Must be a numeric identifier.' });
+    }
+
+    try {
+        const [propertyRows] = await db.query(
+            'SELECT id, L_ListingID FROM rets_property WHERE id = ? OR L_ListingID = ?',
+            [identifier, identifier]
+        );
+
+        if (propertyRows.length === 0) {
+            return res.status(404).json({ error: 'Property not found.' });
+        }
+
+        const listingId = propertyRows[0].L_ListingID;
+
+        // Query open houses, ordered by date and start time per acceptance criteria
+        const [openHouses] = await db.query(
+            'SELECT * FROM rets_openhouse WHERE L_ListingID = ? ORDER BY OpenHouseDate ASC, OH_StartTime ASC',
+            [listingId]
+        );
+
+        // FIXED: Return the raw array directly to satisfy the acceptance criteria
+        return res.status(200).json(openHouses);
+
+    } catch (error) {
+        console.error('Error fetching open houses:', error.message);
+        return res.status(500).json({ error: 'Internal server database error.' });
+    }
+});
+
+// GET /api/properties/:id - Fetch a single property by internal ID or L_ListingID
+app.get('/api/properties/:id', async (req, res) => {
+    const identifier = req.params.id;
+
+    if (!/^\d+$/.test(identifier)) {
+        return res.status(400).json({ error: 'Invalid ID format. Must be a numeric identifier.' });
+    }
+
+    try {
+        const [rows] = await db.query(
+            'SELECT * FROM rets_property WHERE id = ? OR L_ListingID = ?', 
+            [identifier, identifier]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Property not found.' });
+        }
+
+        return res.status(200).json(rows[0]);
+
+    } catch (error) {
+        console.error('Error fetching property by ID:', error.message);
+        return res.status(500).json({ error: 'Internal server database error.' });
     }
 });
 
