@@ -148,8 +148,8 @@ app.get('/api/properties', async (req, res) => {
             results: response
         });
     } catch (dbError) {
-        console.error("Execution Error:", dbError.message);
-        return res.status(500).json({ error: "Internal server database error." });
+    console.error("Execution Error Details:", dbError); // Change this to log the full object
+    res.status(500).json({ error: "Internal server database error." });
     }
 });
 
