@@ -3,7 +3,11 @@
 const API_BASE_URL = 'http://localhost:5000';
 
 export async function fetchProperties(params = {}) {
-    const queryParams = new URLSearchParams(params).toString();
+    const cleanParams = Object.fromEntries(
+        Object.entries(params).filter(([_, value]) => value !== '' && value != null)
+    );
+
+    const queryParams = new URLSearchParams(cleanParams).toString();
     const url = `${API_BASE_URL}/api/properties${queryParams ? `?${queryParams}` : ''}`;
     
     const response = await fetch(url);
