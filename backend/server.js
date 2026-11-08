@@ -35,21 +35,25 @@ app.get('/api/health', async (req, res) => {
 });
 
 // GET /api/properties - Filtering, Pagination & Real Schema Validation
+// GET /api/properties - Filtering, Pagination & Real Schema Validation
 app.get('/api/properties', async (req, res) => {
     const conditions = [];
     const values = [];
 
-    // Parse parameters cleanly
+    // Parse parameters cleanly (support both 'zipcode' and 'zip' from frontend)
     const limit = req.query.limit != null ? Number(req.query.limit) : 20;
     const offset = req.query.offset != null ? Number(req.query.offset) : 0;
     const city = req.query.city != null ? String(req.query.city).trim() : null;
-    const zipcode = req.query.zipcode != null ? String(req.query.zipcode).trim() : null;
+    
+    const rawZip = req.query.zipcode != null ? req.query.zipcode : req.query.zip;
+    const zipcode = rawZip != null ? String(rawZip).trim() : null;
+
     const minPrice = req.query.minPrice != null ? Number(req.query.minPrice) : null;
     const maxPrice = req.query.maxPrice != null ? Number(req.query.maxPrice) : null;
     const beds = req.query.beds != null ? Number(req.query.beds) : null;
     const baths = req.query.baths != null ? Number(req.query.baths) : null;
 
-    // Validate Pagination
+    // Validate Pagination & Prices & Beds/Baths (Keep your existing validation checks...)
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         return res.status(400).json({ error: 'limit must be an integer between 1 and 100.' });
     }
@@ -57,7 +61,6 @@ app.get('/api/properties', async (req, res) => {
         return res.status(400).json({ error: 'offset must be a nonnegative integer.' });
     }
 
-    // Validate Prices
     if (minPrice !== null && (!Number.isFinite(minPrice) || minPrice < 0)) {
         return res.status(400).json({ error: 'minPrice must be a nonnegative number.' });
     }
@@ -68,7 +71,6 @@ app.get('/api/properties', async (req, res) => {
         return res.status(400).json({ error: 'minPrice cannot exceed maxPrice.' });
     }
 
-    // Validate Beds and Baths
     if (beds !== null && (!Number.isInteger(beds) || beds < 0)) {
         return res.status(400).json({ error: 'beds must be a nonnegative integer.' });
     }
@@ -88,14 +90,14 @@ app.get('/api/properties', async (req, res) => {
             }
         }
 
-        // Database Validation for Zipcode Format & Existence
+        // Database Validation for Zipcode Format & Existence (using LIKE for 9-digit compatibility)
         if (zipcode !== null && zipcode !== '') {
             if (!/^\d{5}$/.test(zipcode)) {
                 return res.status(400).json({ error: 'not a valid zipcode. should be 5 digits.' });
             }
             const [existsResult] = await db.query(
-                'SELECT EXISTS(SELECT 1 FROM rets_property WHERE L_Zip = ?) AS zipExists', 
-                [zipcode]
+                'SELECT EXISTS(SELECT 1 FROM rets_property WHERE L_Zip LIKE ?) AS zipExists', 
+                [`${zipcode}%`]
             );
             if (!existsResult[0].zipExists) {
                 return res.status(400).json({ error: 'zipcode does not exist in our listings.' });
@@ -108,8 +110,8 @@ app.get('/api/properties', async (req, res) => {
             values.push(city);
         }
         if (zipcode) {
-            conditions.push('L_Zip = ?');
-            values.push(zipcode);
+            conditions.push('L_Zip LIKE ?');
+            values.push(`${zipcode}%`); // Matches both "90210" and "90210-1234"
         }
         if (minPrice !== null) {
             conditions.push('L_SystemPrice >= ?');
@@ -148,8 +150,8 @@ app.get('/api/properties', async (req, res) => {
             results: response
         });
     } catch (dbError) {
-    console.error("Execution Error Details:", dbError); // Change this to log the full object
-    res.status(500).json({ error: "Internal server database error." });
+        console.error("Execution Error Details:", dbError);
+        res.status(500).json({ error: "Internal server database error." });
     }
 });
 

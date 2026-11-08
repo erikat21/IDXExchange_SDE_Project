@@ -18,9 +18,9 @@ export async function fetchProperties(params = {}) {
 }
 
 export async function fetchPropertyDetail(id) {
-    const response = await fetch(`${API_BASE_URL}/api/properties/${id}`);
+    const response = await fetch(`http://localhost:5000/api/properties/${id}`);
     if (!response.ok) {
-        throw new Error(`Failed to fetch property details: ${response.statusText}`);
+        throw new Error(`Failed to fetch: ${response.statusText}`);
     }
     return response.json();
 }

@@ -1,110 +1,136 @@
-// frontend/src/components/PropertyFilters.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-export default function PropertyFilters({ onSearch, onClear }) {
-    const [filters, setFilters] = useState({
-        city: '',
-        zipcode: '',
-        minPrice: '',
-        maxPrice: '',
-        beds: '',
-        baths: ''
-    });
+export default function PropertyFilters({ initialFilters = {}, onSearch, onClear }) {
+    const [city, setCity] = useState(initialFilters.city || '');
+    const [zip, setZip] = useState(initialFilters.zip || '');
+    const [minPrice, setMinPrice] = useState(initialFilters.minPrice || '');
+    const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice || '');
+    const [beds, setBeds] = useState(initialFilters.beds || '');
+    const [baths, setBaths] = useState(initialFilters.baths || '');
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFilters((prev) => ({ ...prev, [name]: value }));
-    };
+    // Synchronize local form inputs with URL parameters when navigating back
+    useEffect(() => {
+        setCity(initialFilters.city || '');
+        setZip(initialFilters.zip || '');
+        setMinPrice(initialFilters.minPrice || '');
+        setMaxPrice(initialFilters.maxPrice || '');
+        setBeds(initialFilters.beds || '');
+        setBaths(initialFilters.baths || '');
+    }, [initialFilters]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSearch(filters);
+        onSearch({
+            city: city.trim(),
+            zip: zip.trim(),
+            minPrice: minPrice ? Number(minPrice) : '',
+            maxPrice: maxPrice ? Number(maxPrice) : '',
+            beds: beds ? Number(beds) : '',
+            baths: baths ? Number(baths) : '',
+        });
     };
 
-    const handleClearClick = () => {
-        setFilters({
-            city: '',
-            zipcode: '',
-            minPrice: '',
-            maxPrice: '',
-            beds: '',
-            baths: ''
-        });
+    const handleReset = () => {
+        setCity('');
+        setZip('');
+        setMinPrice('');
+        setMaxPrice('');
+        setBeds('');
+        setBaths('');
         onClear();
     };
 
     return (
         <form onSubmit={handleSubmit} style={formStyle}>
-            <div style={inputGroupStyle}>
-                <input
-                    type="text"
-                    name="city"
-                    placeholder="City (e.g., Irvine)"
-                    value={filters.city}
-                    onChange={handleChange}
-                />
-                <input
-                    type="text"
-                    name="zipcode"
-                    placeholder="ZIP Code"
-                    value={filters.zipcode}
-                    onChange={handleChange}
-                />
-                <input
-                    type="number"
-                    name="minPrice"
-                    placeholder="Min Price"
-                    value={filters.minPrice}
-                    onChange={handleChange}
-                />
-                <input
-                    type="number"
-                    name="maxPrice"
-                    placeholder="Max Price"
-                    value={filters.maxPrice}
-                    onChange={handleChange}
-                />
-                <select name="beds" value={filters.beds} onChange={handleChange}>
-                    <option value="">Any Beds</option>
-                    <option value="1">1+ Beds</option>
-                    <option value="2">2+ Beds</option>
-                    <option value="3">3+ Beds</option>
-                    <option value="4">4+ Beds</option>
-                </select>
-                <select name="baths" value={filters.baths} onChange={handleChange}>
-                    <option value="">Any Baths</option>
-                    <option value="1">1+ Baths</option>
-                    <option value="2">2+ Baths</option>
-                    <option value="3">3+ Baths</option>
-                </select>
-            </div>
-            <div style={buttonGroupStyle}>
-                <button type="submit" style={searchBtnStyle}>Search</button>
-                <button type="button" onClick={handleClearClick} style={clearBtnStyle}>Clear Filters</button>
-            </div>
+            <input 
+                type="text" 
+                placeholder="City" 
+                value={city} 
+                onChange={(e) => setCity(e.target.value)} 
+                style={inputStyle}
+            />
+            <input 
+                type="text" 
+                placeholder="Zip Code" 
+                value={zip} 
+                onChange={(e) => setZip(e.target.value)} 
+                style={inputStyle}
+            />
+            <input 
+                type="number" 
+                placeholder="Min Price" 
+                value={minPrice} 
+                onChange={(e) => setMinPrice(e.target.value)} 
+                style={inputStyle}
+            />
+            <input 
+                type="number" 
+                placeholder="Max Price" 
+                value={maxPrice} 
+                onChange={(e) => setMaxPrice(e.target.value)} 
+                style={inputStyle}
+            />
+            <select 
+                value={beds} 
+                onChange={(e) => setBeds(e.target.value)} 
+                style={inputStyle}
+            >
+                <option value="">Any Beds</option>
+                <option value="1">1+ Beds</option>
+                <option value="2">2+ Beds</option>
+                <option value="3">3+ Beds</option>
+                <option value="4">4+ Beds</option>
+            </select>
+            <select 
+                value={baths} 
+                onChange={(e) => setBaths(e.target.value)} 
+                style={inputStyle}
+            >
+                <option value="">Any Baths</option>
+                <option value="1">1+ Baths</option>
+                <option value="2">2+ Baths</option>
+                <option value="3">3+ Baths</option>
+                <option value="4">4+ Baths</option>
+            </select>
+
+            <button type="submit" style={searchBtnStyle}>Search</button>
+            <button type="button" onClick={handleReset} style={clearBtnStyle}>Clear</button>
         </form>
     );
 }
 
 const formStyle = {
-    background: '#f9f9f9',
-    padding: '20px',
-    borderRadius: '8px',
-    marginBottom: '24px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-};
-
-const inputGroupStyle = {
     display: 'flex',
-    flexWrap: 'wrap',
     gap: '12px',
-    marginBottom: '12px'
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: '24px',
+    padding: '16px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '8px',
 };
 
-const buttonGroupStyle = {
-    display: 'flex',
-    gap: '10px'
+const inputStyle = {
+    padding: '8px 12px',
+    borderRadius: '4px',
+    border: '1px solid #ced4da',
+    fontSize: '14px',
 };
 
-const searchBtnStyle = { padding: '8px 16px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' };
-const clearBtnStyle = { padding: '8px 16px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' };
+const searchBtnStyle = {
+    padding: '8px 16px',
+    backgroundColor: '#007bff',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+};
+
+const clearBtnStyle = {
+    padding: '8px 16px',
+    backgroundColor: '#6c757d',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+};

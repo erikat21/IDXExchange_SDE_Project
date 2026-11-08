@@ -1,21 +1,33 @@
 // frontend/src/pages/ListingsPage.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { fetchProperties } from '../api/client';
 import PropertyCard from '../components/PropertyCard';
 import PropertyFilters from '../components/PropertyFilters';
 import Pagination from '../components/Pagination';
 
 export default function ListingsPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // 1. Derive page and filters directly from URL search parameters
+    const currentPage = parseInt(searchParams.get('page') || '1', 10);
+
+    const activeFilters = useMemo(() => {
+        const filters = {};
+        for (const [key, value] of searchParams.entries()) {
+            if (key !== 'page' && value) {
+                filters[key] = value;
+            }
+        }
+        return filters;
+    }, [searchParams]);
+
     const [properties, setProperties] = useState([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeFilters, setActiveFilters] = useState({});
-    
-    // Pagination states
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 20;
 
+    const itemsPerPage = 20;
     const requestIdRef = useRef(0);
 
     useEffect(() => {
@@ -50,19 +62,36 @@ export default function ListingsPage() {
         loadPropertyListings();
     }, [currentPage, activeFilters]);
 
+    // 2. Helper to sync filter object changes into the URL
+    const updateUrlParams = (newFilters, newPage = 1) => {
+        const params = new URLSearchParams();
+        
+        // Add new page parameter if beyond page 1
+        if (newPage > 1) {
+            params.set('page', newPage);
+        }
+
+        // Add filter parameters
+        Object.entries(newFilters).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                params.set(key, value);
+            }
+        });
+
+        setSearchParams(params);
+    };
+
     const handleSearch = (newFilters) => {
-        setActiveFilters(newFilters);
-        setCurrentPage(1); // Requirement 35: Changing filters resets to page 1
+        updateUrlParams(newFilters, 1); // Reset to page 1 on filter search
     };
 
     const handleClear = () => {
-        setActiveFilters({});
-        setCurrentPage(1);
+        setSearchParams({}); // Clear all search params from URL
     };
 
     const handlePageChange = (newPage) => {
-        setCurrentPage(newPage);
-        window.scrollTo({ top: 0, behavior: 'smooth' }); // Requirement 34: Scroll to top
+        updateUrlParams(activeFilters, newPage);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const totalPages = Math.ceil(total / itemsPerPage);
@@ -78,7 +107,11 @@ export default function ListingsPage() {
                 </p>
             </header>
 
-            <PropertyFilters onSearch={handleSearch} onClear={handleClear} />
+            <PropertyFilters 
+                initialFilters={activeFilters}
+                onSearch={handleSearch} 
+                onClear={handleClear} 
+            />
 
             {error && <div style={{ textAlign: 'center', color: 'red', padding: '20px' }}>{error}</div>}
             {loading && <div style={{ textAlign: 'center', padding: '40px' }}>Loading properties...</div>}
