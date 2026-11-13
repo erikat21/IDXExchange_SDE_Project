@@ -3,10 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { fetchPropertyDetail } from '../api/client';
 import PropertyImageGallery from '../components/PropertyImageGallery';
 import PropertyMap from '../components/PropertyMap';
+import { useFavorites } from '../hooks/useFavorites';
 
 export default function PropertyDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { isFavorite, toggleFavorite } = useFavorites();
 
     const [property, setProperty] = useState(null);
     const [openHouses, setOpenHouses] = useState([]);
@@ -14,45 +16,39 @@ export default function PropertyDetailPage() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-    async function loadDetailAndOpenHouses() {
-        try {
-            setLoading(true);
+        async function loadDetailAndOpenHouses() {
+            try {
+                setLoading(true);
 
-            // 1. Fetch Property Detail
-            const data = await fetchPropertyDetail(id);
-            const propertyObj = Array.isArray(data) ? data[0] : (data.property || data.result || data);
-            setProperty(propertyObj);
+                // 1. Fetch Property Detail
+                const data = await fetchPropertyDetail(id);
+                const propertyObj = Array.isArray(data) ? data[0] : (data.property || data.result || data);
+                setProperty(propertyObj);
 
-            // 2. Fetch Open Houses using explicit backend host or listing ID
-            const targetId = propertyObj?.L_ListingID || propertyObj?.id || id;
-            
-            console.log("Fetching open houses for identifier:", targetId);
+                // 2. Fetch Open Houses using explicit backend host or listing ID
+                const targetId = propertyObj?.L_ListingID || propertyObj?.id || id;
+                
+                const openHouseRes = await fetch(`http://localhost:5000/api/properties/${targetId}/openhouses`)
+                    .then(res => res.ok ? res.json() : [])
+                    .catch(err => {
+                        console.error("Openhouse fetch network error:", err);
+                        return [];
+                    });
 
-            const openHouseRes = await fetch(`http://localhost:5000/api/properties/${targetId}/openhouses`)
-                .then(res => {
-                    console.log("Openhouse response status:", res.status);
-                    return res.ok ? res.json() : [];
-                })
-                .catch(err => {
-                    console.error("Openhouse fetch network error:", err);
-                    return [];
-                });
-
-            console.log("Open Houses Received:", openHouseRes);
-            setOpenHouses(Array.isArray(openHouseRes) ? openHouseRes : []);
-            setError(null);
-        } catch (err) {
-            console.error("Failed to load page:", err);
-            setError(err.message || 'Failed to load property details.');
-        } finally {
-            setLoading(false);
+                setOpenHouses(Array.isArray(openHouseRes) ? openHouseRes : []);
+                setError(null);
+            } catch (err) {
+                console.error("Failed to load page:", err);
+                setError(err.message || 'Failed to load property details.');
+            } finally {
+                setLoading(false);
+            }
         }
-    }
 
-    if (id) {
-        loadDetailAndOpenHouses();
-    }
-}, [id]);
+        if (id) {
+            loadDetailAndOpenHouses();
+        }
+    }, [id]);
 
     if (loading) return <div style={{ textAlign: 'center', padding: '60px' }}>Loading property details...</div>;
     if (error) return (
@@ -67,22 +63,24 @@ export default function PropertyDetailPage() {
     if (!property) return <div style={{ textAlign: 'center', padding: '60px' }}>Property not found.</div>;
 
     // Schema Field Mappings & Half-Bath Calculations
-    const beds = property.L_Keyword2 ?? 'N/A'; // L_Keyword2 is '# Beds'
+    const beds = property.L_Keyword2 ?? 'N/A';
     
     const decBaths = property.LM_Dec_3 !== null && property.LM_Dec_3 !== undefined ? parseFloat(property.LM_Dec_3) : 0;
     const halfBaths = parseInt(property.BathroomsHalf || 0, 10);
     const totalBaths = (decBaths % 1 === 0 && halfBaths > 0) ? decBaths + (halfBaths * 0.5) : decBaths;
     const baths = totalBaths > 0 ? totalBaths : 'N/A';
 
-    const garage = property.L_Keyword5 ?? 'N/A'; // L_Keyword5 is 'Garage Capacity'
-    const sqft = property.LM_Int2_3 ?? 'N/A';    // LM_Int2_3 is 'Apx Fin SQFT'
-    const price = property.L_SystemPrice || 0;   // L_SystemPrice is 'Search Price'
+    const garage = property.L_Keyword5 ?? 'N/A';
+    const sqft = property.LM_Int2_3 ?? 'N/A';
+    const price = property.L_SystemPrice || 0;
     
     const address = `${property.L_Address || ''}, ${property.L_City || ''}, ${property.L_State || ''} ${property.L_Zip || ''}`.replace(/^,\s*|\s*,\s*$/, '');
     const description = property.L_Remarks || 'No description available.';
     const yearBuilt = property.YearBuilt ?? 'N/A';
 
-    // Helper to safely extract remarks from the nested all_data JSON string or object
+    const listingId = property.id || property.L_ListingID;
+    const isFav = isFavorite(listingId);
+
     const getOpenHouseRemarks = (oh) => {
         if (!oh.all_data) return oh.OH_Remarks || oh.Remarks || null;
         try {
@@ -93,7 +91,6 @@ export default function PropertyDetailPage() {
         }
     };
 
-    // Helper to format 24-hour SQL time strings (e.g., "13:30:00") to 12-hour AM/PM format
     const formatTime = (timeStr) => {
         if (!timeStr) return 'N/A';
         const parts = timeStr.split(':');
@@ -109,9 +106,19 @@ export default function PropertyDetailPage() {
 
     return (
         <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-            <button onClick={() => navigate(-1)} style={backButtonStyle}>
-                ← Back to Listings
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <button onClick={() => navigate(-1)} style={backButtonStyle}>
+                    ← Back to Listings
+                </button>
+
+                {/* Favorite Button added here in the top navigation row */}
+                <button 
+                    onClick={() => toggleFavorite(listingId)}
+                    style={detailFavButtonStyle(isFav)}
+                >
+                    {isFav ? '❤️ Saved to Favorites' : '🤍 Save to Favorites'}
+                </button>
+            </div>
 
             <h1>{address}</h1>
             <h2 style={{ color: '#28a745', marginBottom: '20px' }}>
@@ -137,8 +144,6 @@ export default function PropertyDetailPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
                         {openHouses.map((oh, index) => {
                             const remarks = getOpenHouseRemarks(oh);
-                            
-                            // Parse date safely ignoring timezone offsets
                             const dateParts = oh.OpenHouseDate ? oh.OpenHouseDate.split('T')[0].split('-') : null;
                             const formattedDate = dateParts && dateParts.length === 3
                                 ? new Date(dateParts[0], dateParts[1] - 1, dateParts[2]).toLocaleDateString('en-US', {
@@ -201,7 +206,6 @@ const backButtonStyle = {
     fontSize: '16px',
     cursor: 'pointer',
     padding: 0,
-    marginBottom: '20px',
     textDecoration: 'underline',
 };
 
@@ -242,3 +246,19 @@ const pastBadgeStyle = {
     borderRadius: '4px',
     fontWeight: '600',
 };
+
+const detailFavButtonStyle = (isFav) => ({
+    padding: '8px 16px',
+    borderRadius: '6px',
+    border: '1px solid #ff4d4f',
+    backgroundColor: isFav ? '#ff4d4f' : '#fff',
+    color: isFav ? '#fff' : '#ff4d4f',
+    fontSize: '0.95rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
+    transition: 'all 0.2s ease'
+});

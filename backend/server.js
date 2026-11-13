@@ -35,7 +35,6 @@ app.get('/api/health', async (req, res) => {
 });
 
 // GET /api/properties - Filtering, Pagination & Real Schema Validation
-// GET /api/properties - Filtering, Pagination & Real Schema Validation
 app.get('/api/properties', async (req, res) => {
     const conditions = [];
     const values = [];
@@ -52,6 +51,14 @@ app.get('/api/properties', async (req, res) => {
     const maxPrice = req.query.maxPrice != null ? Number(req.query.maxPrice) : null;
     const beds = req.query.beds != null ? Number(req.query.beds) : null;
     const baths = req.query.baths != null ? Number(req.query.baths) : null;
+
+    const sortBy = req.query.sortBy != null ? String(req.query.sortBy).trim() : null;
+    const sortOrder = req.query.sortOrder != null ? String(req.query.sortOrder).trim().toUpperCase() : 'ASC';
+    const rawIds = req.query.ids != null ? String(req.query.ids).trim() : null;
+    let targetIds = [];
+    if (rawIds) {
+        targetIds = rawIds.split(',').map(id => Number(id.trim())).filter(n => Number.isInteger(n) && n > 0);
+    }
 
     // Validate Pagination & Prices & Beds/Baths (Keep your existing validation checks...)
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
@@ -76,6 +83,31 @@ app.get('/api/properties', async (req, res) => {
     }
     if (baths !== null && (!Number.isFinite(baths) || baths < 0)) {
         return res.status(400).json({ error: 'baths must be a nonnegative number.' });
+    }
+    if (targetIds.length > 0) {
+        const placeholders = targetIds.map(() => '?').join(',');
+        conditions.push(`(id IN (${placeholders}) OR L_ListingID IN (${placeholders}))`);
+        values.push(...targetIds, ...targetIds);
+    } else if (rawIds && targetIds.length === 0) {
+        // If ids param was passed but empty/invalid, return 0 results immediately
+        conditions.push('1 = 0');
+    }
+
+    // Validate sortBy against strict SQL column whitelist ---
+    const validSortColumns = {
+        'price': 'L_SystemPrice',
+        'beds': 'L_Keyword2',
+        'sqft': 'LM_Int2_3',
+        'date': 'id' // Or your primary date field column name
+    };
+
+    if (sortBy !== null && sortBy !== '') {
+        if (!validSortColumns[sortBy]) {
+            return res.status(400).json({ error: 'Invalid sortBy value. Must be price, beds, sqft, or date.' });
+        }
+    }
+    if (sortOrder !== 'ASC' && sortOrder !== 'DESC') {
+        return res.status(400).json({ error: 'sortOrder must be ASC or DESC.' });
     }
 
     try {
@@ -132,9 +164,14 @@ app.get('/api/properties', async (req, res) => {
 
         const whereQuery = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         
-        // Execute queries with isolated parameter arrays
+        let orderQuery = 'ORDER BY id DESC'; // Default fallback sort
+        if (sortBy) {
+            const columnName = validSortColumns[sortBy];
+            orderQuery = `ORDER BY ${columnName} ${sortOrder}`;
+        }
+
         const [response] = await db.query(
-            `SELECT * FROM rets_property ${whereQuery} LIMIT ? OFFSET ?`, 
+            `SELECT * FROM rets_property ${whereQuery} ${orderQuery} LIMIT ? OFFSET ?`, 
             [...values, limit, offset]
         );
         
